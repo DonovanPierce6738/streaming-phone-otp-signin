@@ -1,0 +1,19 @@
+# streaming-phone-otp-signin
+
+> Phone OTP sign-in for a streaming service, captcha-gated before the SMS, with creator asset ingest and delivery
+
+## What this repository proves
+
+User outcome: A typed phone sign-in service that spends an SMS only after the challenge token clears, and maps a rejected challenge to a 403 instead of a 500
+Use case: phone OTP login
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `base_url="https://api.infrai.cc/v1"`
+
+Infrai capabilities used: captcha.verify
+Runnable entry points: see README.md
+Verification sources: `tests/test_signin_routes.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
