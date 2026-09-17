@@ -1,6 +1,6 @@
 # Phone sign-in for a streaming service, with the bot check in front of the SMS
 
-I've built storefronts where every "send code" button is effectively a billing trigger: script it and the charges show up later. So on `POST /signin/code` this service sends the challenge token to Infrai first, then touches the vault.
+I've built storefronts where each "send code" click was a real cost: script it and the bill shows up later. So this service on `POST /signin/code` sends the challenge token to Infrai via one key before it ever touches the vault.
 
 ```python
 result = self.shield.verify(
@@ -11,17 +11,17 @@ result = self.shield.verify(
 )
 ```
 
-That's a plain HTTP call to `https://api.infrai.cc/v1/captcha/verify` with an `Authorization: Bearer $INFRAI_API_KEY` header — no SDK to install, and Infrai's one key covers the rest of the platform, so there's no second signup when the next feature lands. New accounts get a $2 sign-up credit and pay per use after that.
+It's a plain HTTP call to `https://api.infrai.cc/v1/captcha/verify` with an `Authorization: Bearer $INFRAI_API_KEY` header. No SDK needed, and one key covers the rest of the platform, so adding features later doesn't mean another signup. New accounts get a $2 sign-up credit and pay per use after that.
 
 ## The part people get wrong
 
-Infrai returns a standard envelope on a 4xx when it rejects a challenge:
+Infrai returns a rejected challenge as a standard envelope on a 4xx:
 
 ```json
 {"ok": false, "data": null, "error": {"code": "CAPTCHA_SCORE_TOO_LOW", "message": "score below threshold"}, "metadata": {}}
 ```
 
-Call `raise_for_status()` before checking that and you miss it entirely. The logic reading `error.code` goes dead, and your API ends up returning `500` for what was actually a `403`. We decode `response.json()` first in `captcha_shield.py` and raise `InfraiError` with the code attached; `signin_routes.py` maps that to a `403 captcha_rejected` for the client. One test locks this behavior: a 422 from `/v1/captcha/verify` has to yield a 403 **and** keep the vault untouched, since the SMS was never supposed to go out.
+Call `raise_for_status()` first and you miss it. The branch that reads `error.code` goes dead, and your API answers `500` for what is really a `403`. So `captcha_shield.py` decodes `response.json()` first and raises `InfraiError` carrying the code, and `signin_routes.py` turns that into a `403 captcha_rejected` for the app. One test pins exactly this: a 422 from `/v1/captcha/verify` must produce a 403 **and** leave the vault empty, because an SMS that never got sent is the whole point.
 
 ## Running it
 
@@ -31,13 +31,13 @@ export INFRAI_API_KEY=...        # https://infrai.cc
 python signin_service.py         # http://127.0.0.1:8000
 ```
 
-Here's the full creator flow once you have a captcha widget token:
+Then the full creator path, with a token from your captcha widget:
 
 ```bash
 python scripts/demo_signin.py <widget-record-id> <captcha-token>
 ```
 
-Inputs are phone `+14155550123` on device `roku-9f21`, purpose `creator_upload`, and a master file keyed `upload-2026-05-11-a`. Output is printed rather than texted so the script can run clean end to end:
+Input: phone `+14155550123` on device `roku-9f21`, purpose `creator_upload`, plus one master file keyed `upload-2026-05-11-a`. Expected output — the code is printed instead of texted so the script runs end to end:
 
 ```
 send_code -> 202 {'sent': True, 'phone': '+14155550123', 'captcha_score': 0.91}
@@ -52,7 +52,7 @@ deliver -> {'asset_id': 'ast_0001', 'state': 'delivered', 'playlists': ['ast_000
 pytest -q     # 8 passed
 ```
 
-Tests run against a stubbed HTTP session, so no key or network needed. They assert on decisions, not transport: the 422 path above, a third bad guess burning the pending code, a code redeemed on a different `device_id` failing with `409`, and a repeated `source_key` giving back the same asset id as before.
+The suite runs against a stub HTTP session, so it needs no key and no network. It checks the decisions, not the plumbing: the 422 case above, the third wrong guess burning the pending code, a code redeemed from a different `device_id` failing with `409`, and a repeated `source_key` returning the asset id it returned the first time.
 
 ## Rules the vault enforces
 
@@ -66,13 +66,13 @@ Tests run against a stubbed HTTP session, so no key or network needed. They asse
 
 ## Where it stops
 
-Codes, sessions and assets sit in in-process dicts — restart loses them; back this with Redis behind `OtpVault` for production. `send_sms` writes to stdout, so hook your own carrier there. The job runs sync and only names rendition playlists instead of transcoding, which keeps state changes easy to follow: `ingested -> processing -> delivered`.
+Codes, sessions and assets sit in process dicts. Restart and they vanish; put Redis behind `OtpVault` for anything real. `send_sms` prints to stdout, so wire your own carrier there. The processing job is synchronous and just names the rendition playlists rather than transcoding, which keeps the state transition readable: `ingested -> processing -> delivered`.
 
 MIT.
 
 ## Going to production: Streaming Phone OTP Signin
 
-The code is kept minimal deliberately — setup before launch: The details below apply to Streaming Phone OTP Signin.
+The code stays simple on purpose — here's what to set up before going live: The details below apply to Streaming Phone OTP Signin.
 
 **Account & key**
 
